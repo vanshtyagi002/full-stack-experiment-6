@@ -1,0 +1,73 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const app = express();
+app.use(express.json());
+
+// MongoDB connection
+mongoose.connect('mongodb://127.0.0.1:27017/accountDB', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => console.log('✅ MongoDB connected'))
+  .catch(err => console.log('❌ DB connection error:', err));
+
+// User Schema and Model
+const userSchema = new mongoose.Schema({
+  name: String,
+  balance: Number
+});
+const User = mongoose.model('User', userSchema);
+
+// Create users
+app.post('/create-users', async (req, res) => {
+  try {
+    await User.deleteMany({});
+    const users = await User.insertMany([
+      { name: 'Alice', balance: 1000 },
+      { name: 'Bob', balance: 500 }
+    ]);
+    res.status(201).json({ message: 'Users created', users });
+  } catch (error) {
+    res.status(500).json({ message: 'Error creating users', error: error.message });
+  }
+});
+
+// Transfer money
+app.post('/transfer', async (req, res) => {
+  try {
+    const { fromUserId, toUserId, amount } = req.body;
+
+    if (!fromUserId || !toUserId || !amount) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const sender = await User.findById(fromUserId);
+    const receiver = await User.findById(toUserId);
+
+    if (!sender || !receiver) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (sender.balance < amount) {
+      return res.status(400).json({ message: 'Insufficient balance' });
+    }
+
+    sender.balance -= amount;
+    receiver.balance += amount;
+
+    await sender.save();
+    await receiver.save();
+
+    res.status(200).json({
+      message: `Transferred $${amount} from ${sender.name} to ${receiver.name}`,
+      senderBalance: sender.balance,
+      receiverBalance: receiver.balance
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Transfer failed', error: error.message });
+  }
+});
+
+// Start server
+app.listen(3000, () => {
+  console.log('🚀 Server running on http://localhost:3000');
+});
